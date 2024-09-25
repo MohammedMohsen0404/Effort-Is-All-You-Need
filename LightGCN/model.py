@@ -37,6 +37,38 @@ class RecSysGNN(nn.Module):
 
         return user_emb, item_emb
 
+
+# Load and clean data
+def load_and_clean_data(ratings_file, movies_file):
+    ratings_df = pd.read_csv(ratings_file)
+    movies_df = pd.read_csv(movies_file)
+    
+    # Example of data cleaning
+    ratings_df = ratings_df.dropna()  # Drop missing values
+    ratings_df = ratings_df[ratings_df['rating'] >= 3]  # Keep only ratings 3 and above
+    
+    return ratings_df, movies_df
+
+# Create edge index from ratings DataFrame
+def create_edge_index(ratings_df):
+    user_ids = ratings_df['userId'].unique()
+    item_ids = ratings_df['movieId'].unique()
+    
+    n_users = len(user_ids)
+    n_items = len(item_ids)
+
+    # Create mappings
+    user_to_index = {user_id: idx for idx, user_id in enumerate(user_ids)}
+    item_to_index = {item_id: idx + n_users for idx, item_id in enumerate(item_ids)}
+
+    # Create edge index
+    edge_index = torch.tensor([
+        [user_to_index[user] for user in ratings_df['userId']],
+        [item_to_index[item] for item in ratings_df['movieId']]
+    ], dtype=torch.long)
+
+    return edge_index, n_users, n_items
+
 def load_model(latent_dim, n_layers, n_users, n_items, model_path):
     model = RecSysGNN(latent_dim, n_layers, n_users, n_items)
     model.load_state_dict(torch.load(model_path)['model_state_dict'])
@@ -62,36 +94,8 @@ def get_top_recommendations(user_id, selected_genres, model, movies_df, n_items,
 
     return top_recommendations[['movieId', 'title']]
 
-# Load movies data
-movies_df = load_movies_data('ml-latest-small/movies.csv')
-
-# Load ratings data to construct edge_index
-ratings_df = pd.read_csv('ml-latest-small/ratings.csv')
-
-# Create edge index based on user-item interactions
-user_ids = ratings_df['userId'].unique()
-item_ids = ratings_df['movieId'].unique()
-n_users = len(user_ids)
-n_items = len(item_ids)
-
-# Mapping user and item IDs to indices
-user_to_index = {user_id: idx for idx, user_id in enumerate(user_ids)}
-item_to_index = {item_id: idx + n_users for idx, item_id in enumerate(item_ids)}  # Offset by n_users
-
-# Create edge index
-edge_index = torch.tensor([
-    [user_to_index[user] for user in ratings_df['userId']],
-    [item_to_index[item] for item in ratings_df['movieId']]
-], dtype=torch.long)
-
-# Example parameters
-latent_dim = 64
-n_layers = 3
-model_path = 'lightgcn1_model.pth'
-
-# Load the model
-lightgcn = load_model(latent_dim, n_layers, n_users, n_items, model_path)
-
-# Example function to get recommendations
-def recommend(user_id, selected_genres, n_items=10):
-    return get_top_recommendations(user_id, selected_genres, lightgcn, movies_df, n_items, edge_index)
+# Load data and create edge index
+ratings_file = 'ml-latest-small/ratings.csv'
+movies_file = 'ml-latest-small/movies.csv'
+ratings_df, movies_df = load_and_clean_data(ratings_file, movies_file)
+edge_index, n_users, n_items = create_edge_index(ratings_df)
