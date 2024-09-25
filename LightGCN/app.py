@@ -6,12 +6,12 @@ from wtforms.validators import DataRequired, Email, Length, Regexp
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
 import secrets
-import pandas as pd
+from original_lightgcn import user_preferences, get_top_recommendations, lightgcn, movies_df, le_item, n_items, train_user_ids
 import torch
-from model import RecSysGNN, load_model, load_and_clean_data, create_edge_index
+import pandas as pd
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = secrets.token_hex(16)
+app.config['SECRET_KEY'] = secrets.token_hex(16)  # Generate a secret key
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'site.db')
 
@@ -33,11 +33,15 @@ class LoginForm(FlaskForm):
     password = PasswordField('Password', validators=[DataRequired()])
     submit = SubmitField('Log In')
 
+# Load the ratings.csv file
+ratings_df = pd.read_csv('C:\\Users\\HP\\Documents\\Major_Project_Files\\frontend\\ml-latest-small\\ml-latest-small\\ratings.csv')
 
-ratings_file = 'ml-latest-small/ratings.csv'
-movies_file = 'ml-latest-small/movies.csv'
-ratings_df, movies_df = load_and_clean_data(ratings_file, movies_file)
-edge_index, n_users, n_items = create_edge_index(ratings_df)
+# Define the available genres
+available_genres = [
+    "Action", "Adventure", "Animation", "Children's", "Comedy", "Crime",
+    "Documentary", "Drama", "Fantasy", "Film-Noir", "Horror", "Musical",
+    "Mystery", "Romance", "Sci-Fi", "Thriller", "War", "Western"
+]
 
 @app.route('/')
 def home():
@@ -47,7 +51,7 @@ def home():
 def index():
     return render_template('index.html')
 
-@app.route('/signUp.html', methods=['GET', 'POST'])
+@app.route('/signUp.html', methods=['GET','POST'])
 def sign_up():
     form = SignUpForm()
     if form.validate_on_submit():
@@ -71,52 +75,88 @@ def log_in():
         user = User.query.filter_by(email_or_phone=form.email_or_phone.data).first()
         if user and check_password_hash(user.password, form.password.data):
             flash('Logged in successfully.')
-            return redirect(url_for('index'))
+            return redirect(url_for('index')) # Redirect to the index page or another appropriate page
         else:
             flash('Email or phone number not found or incorrect password.')
             return redirect(url_for('log_in'))
     return render_template('logIn.html', form=form)
 
+
 @app.route('/recommendations.html', methods=['GET', 'POST'])
 def recommendations():
     if request.method == 'POST':
+        # Get user preferences from the form
         selected_genres = request.form.getlist('genres')
-        random_user_id = torch.randint(0, n_users, (1,)).item()
-        
-        top_recommendations = get_top_recommendations(random_user_id, selected_genres, lightgcn, movies_df, n_items, edge_index)
 
-        recommendations_json = top_recommendations.to_json(orient='records')
+        # Generate random user ID
+        random_user_id = torch.randint(0, len(train_user_ids), (1,)).item()
+
+        # Get top recommendations based on user preferences
+        top_recommendations = get_top_recommendations(random_user_id, selected_genres, lightgcn, movies_df, le_item, n_items)
+
+        # Merge with ratings data to get average ratings
+        recommended_ratings = pd.merge(top_recommendations, ratings_df, on='movieId', how='left')
+        average_ratings = recommended_ratings.groupby(['movieId', 'title'], as_index=False)['rating'].mean()
+
+        # Convert recommendations to JSON including only the title
+        recommendations_json = average_ratings[['title']].to_json(orient='records')
+
         return recommendations_json
-    return render_template('recommendations.html')
+    elif request.method == 'GET':
+        # Render the HTML template for the recommendations form
+        return render_template('recommendations.html')
 
+
+    
 @app.route('/movie_details.html')
 def movie_details():
     return render_template('movie_details.html')
 
 @app.route('/top_rated_movies.html', methods=['GET', 'POST'])
 def top_rated_movies():
-    movies_df = pd.read_csv('ml-latest-small/movies.csv')
+    # Load movies dataset
+    movies_df = pd.read_csv(r'C:\Users\HP\Documents\Major_Project_Files\project1\frontend\ml-latest-small\ml-latest-small\movies.csv')
+    
+    # Load ratings dataset
+    ratings_df = pd.read_csv(r'C:\Users\HP\Documents\Major_Project_Files\project1\frontend\ml-latest-small\ml-latest-small\ratings.csv')
+
+    # Merge datasets based on movieId
     movie_data = pd.merge(ratings_df, movies_df, on='movieId', how='inner')
+    
+    # Filter movies with rating 5
     top_rated_movies = movie_data[movie_data['rating'] == 5]
+    
+    # Calculate average ratings for each movie
     average_ratings = top_rated_movies.groupby('title')['rating'].mean()
+    
+    # Get top-rated movies
     top_movies = average_ratings.nlargest(16).reset_index()
-    top_movies['year'] = top_movies['title'].str.extract(r'\((\d{4})\)$')
+
+    # Sort top-rated movies by year present in the title
+    top_movies['year'] = top_movies['title'].str.extract(r'\((\d{4})\)$') # Extract year from title
     top_movies_sorted = top_movies.sort_values(by='year', ascending=False)
+
     return render_template('top_rated_movies.html', top_movies=top_movies_sorted.values.tolist())
 
 @app.route('/user_profile.html', methods=['GET', 'POST'])
 def user_profile():
     if request.method == 'POST':
+        # Get form data
         username = request.form['username']
         email = request.form['email']
         preferences = request.form.getlist('preferences')
         ratings = request.form['ratings']
         watch_history = request.form.getlist('watch_history')
+
+        # Redirect to a different page after form submission
         return redirect(url_for('user_profile_success', username=username))
-    return render_template('user_profile.html')
+
+    # Render the user profile form
+    return render_template('user_profile.html', available_genres=available_genres)
 
 @app.route('/recommend.html', methods=['GET'])
 def recommend():
+    # Get the JSON data from the URL parameter
     data = request.args.get('data')
     return render_template('recommend.html', data=data)
 
@@ -124,8 +164,4 @@ with app.app_context():
     db.create_all()
 
 if __name__ == '__main__':
-    latent_dim = 64
-    n_layers = 3
-    model_path = 'lightgcn1_model.pth'
-    lightgcn = load_model(latent_dim, n_layers, n_users, n_items, model_path)
     app.run(debug=True)
