@@ -8,7 +8,7 @@ import os
 import secrets
 import pandas as pd
 import torch
-from model import RecSysGNN, load_model, load_movies_data, get_top_recommendations, edge_index, n_users, n_items, movies_df
+from model import RecSysGNN, load_model, load_and_clean_data, create_edge_index
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
@@ -33,8 +33,11 @@ class LoginForm(FlaskForm):
     password = PasswordField('Password', validators=[DataRequired()])
     submit = SubmitField('Log In')
 
-# Load ratings dataset
-ratings_df = pd.read_csv('ml-latest-small/ratings.csv')
+
+ratings_file = 'ml-latest-small/ratings.csv'
+movies_file = 'ml-latest-small/movies.csv'
+ratings_df, movies_df = load_and_clean_data(ratings_file, movies_file)
+edge_index, n_users, n_items = create_edge_index(ratings_df)
 
 @app.route('/')
 def home():
