@@ -43,6 +43,9 @@ def recommend():
         le_item,
         n_users,
     )
+
+    print(recommendations.to_dict(orient="records"))  # Add this line
+
     return render_template(
         "results.html", recommendations=recommendations.to_dict(orient="records")
     )
@@ -50,7 +53,7 @@ def recommend():
 
 @app.route("/rate", methods=["POST"])
 def rate():
-    global model  # Declare model as global to access it
+    global model, ratings_df, n_users  # Declare model, ratings_df, and n_users as global
     user_id = request.form.get("user_id")
     movie_id = request.form.get("movie_id")
     rating = request.form.get("rating")
@@ -60,17 +63,23 @@ def rate():
         flash("Invalid input values!", "error")
         return redirect(url_for("index"))
 
-    model, ratings_df, n_users = update_model_with_new_rating(
-        model,
-        ratings_df,
-        int(user_id),
-        int(movie_id),
-        float(rating),
-        n_users,
-        le_user,
-        le_item,
-    )
-    flash("Rating added successfully!", "success")
+    print(f"user_id: {user_id}, movie_id: {movie_id}, rating: {rating}")  # Debug output
+
+    try:
+        model, ratings_df, n_users = update_model_with_new_rating(
+            model,
+            ratings_df,
+            int(user_id),
+            int(movie_id),
+            float(rating),
+            n_users,
+            le_user,
+            le_item,
+        )
+        flash("Rating added successfully!", "success")
+    except Exception as e:
+        flash(f"An error occurred: {str(e)}", "error")  # Capture the error message
+
     return redirect(url_for("index"))
 
 

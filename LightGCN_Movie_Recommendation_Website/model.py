@@ -388,13 +388,21 @@ def get_top_recommendations(
         for movie_id in recommended_movie_ids
         if movie_id in filtered_movies.index
     ]
+    
+    # Use loc to filter the recommendations DataFrame to get the relevant rows
     recommendations = filtered_movies.loc[recommended_movie_ids]
+
+    # Add the movieId to the recommendations
+    recommendations["movieId"] = recommendations.index  # Assuming index corresponds to movieId
+
     recommendations["matching_genres"] = recommendations["genres"].apply(
         lambda x: sum(genre in x for genre in selected_genres)
     )
     recommendations = recommendations.sort_values(by="matching_genres", ascending=False)
 
-    return recommendations.head(top_n)[["title", "genres"]], ratings_df
+    # Return the desired columns including movieId
+    return recommendations.head(top_n)[["movieId", "title", "genres"]], ratings_df
+
 
 
 def update_model_with_new_rating(
