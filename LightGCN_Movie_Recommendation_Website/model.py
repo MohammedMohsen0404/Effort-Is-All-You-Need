@@ -458,11 +458,10 @@ def main():
     # Model parameters
     latent_dim = 64
     n_layers = 3
-    EPOCHS = 1
+    EPOCHS = 50
     BATCH_SIZE = 1024
-    DECAY = 0.0001
+    DECAY = 0.000001
     LR = 0.001
-    K = 20
 
     # Initialize and train the model
     model = LightGCN(n_users, n_items, latent_dim, n_layers).to(device)
