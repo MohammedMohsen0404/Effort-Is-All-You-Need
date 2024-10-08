@@ -458,7 +458,7 @@ def main():
     # Model parameters
     latent_dim = 64
     n_layers = 3
-    EPOCHS = 50
+    EPOCHS = 70
     BATCH_SIZE = 1024
     DECAY = 0.000001
     LR = 0.001
